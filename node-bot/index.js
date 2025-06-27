@@ -1,6 +1,5 @@
 // node-bot/index.js
-require('dotenv').config();
-
+require('dotenv').config({ path: __dirname + '/.env' });
 
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, createAudioResource, createAudioPlayer, VoiceReceiver } = require('@discordjs/voice');
