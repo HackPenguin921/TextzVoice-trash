@@ -1,0 +1,3 @@
+ $ python python-whisper/transcriber.py
+$ cd node-bot
+node index.js
