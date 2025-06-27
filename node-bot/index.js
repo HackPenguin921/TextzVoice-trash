@@ -80,4 +80,23 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   }
 });
 
+// チャンネルの誰かが抜けたとき、Botだけが残ったら切断
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  const channel = oldState.channel || newState.channel;
+
+  if (!channel) return;
+
+  const nonBotMembers = channel.members.filter((member) => !member.user.bot);
+
+  // ボイスチャンネルに人がいない（Botだけ）
+  if (nonBotMembers.size === 0) {
+    const connection = getVoiceConnection(channel.guild.id);
+    if (connection) {
+      connection.destroy();
+      console.log(`👋 ボイスチャンネル「${channel.name}」が無人になったので、Botも退出しました`);
+    }
+  }
+});
+
+
 client.login(process.env.DISCORD_TOKEN);
