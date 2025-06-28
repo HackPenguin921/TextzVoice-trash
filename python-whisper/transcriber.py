@@ -1,9 +1,12 @@
+# python-whisper/transcriber.py
 import os
 import time
 import whisper
 import discord
 import asyncio
+from dotenv import load_dotenv
 
+load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
 AUDIO_DIR = "../node-bot/audio"
@@ -17,7 +20,8 @@ async def send_text(text):
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
     if channel:
-        await channel.send(text)
+        # Botの発言によって再度TTSされるのを防ぐため、client.user.idと比較
+        await channel.send(f"📝 {text}")
     else:
         print("指定チャンネルが見つかりません。CHANNEL_IDを確認してください。")
 
@@ -26,7 +30,7 @@ def pcm_to_wav(pcm_path, wav_path):
 
 async def main_loop():
     processed = set()
-    print("PCMフォルダ監視開始...")
+    print("🎧 PCMフォルダ監視開始...")
 
     while True:
         for f in os.listdir(AUDIO_DIR):
@@ -49,11 +53,11 @@ async def main_loop():
 
 @client.event
 async def on_ready():
-    print(f"Discordログイン完了: {client.user}")
+    print(f"🤖 Discordログイン完了: {client.user}")
     await main_loop()
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN or CHANNEL_ID == 0:
-        print("ERROR: .envにDISCORD_TOKENとCHANNEL_IDを正しく設定してください。")
+        print("❌ .envにDISCORD_TOKENとCHANNEL_IDを正しく設定してください。")
     else:
         client.run(DISCORD_TOKEN)
