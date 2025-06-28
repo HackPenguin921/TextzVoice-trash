@@ -1,46 +1,59 @@
 import os
 import time
-import numpy as np
-import soundfile as sf
 import whisper
+import discord
+import asyncio
 
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
 AUDIO_DIR = "../node-bot/audio"
-OUTPUT_DIR = "./transcripts"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(AUDIO_DIR,exist_ok=True)
 
-model = whisper.load_model("tiny")  # "base", "small", "medium" にすると精度アップ
+model = whisper.load_model("base")
 
-def convert_pcm_to_wav(pcm_path, wav_path, rate=48000):
-    with open(pcm_path, 'rb') as pcmfile:
-        pcm_data = np.frombuffer(pcmfile.read(), dtype=np.int16)
-    sf.write(wav_path, pcm_data, rate)
-    print(f"✅ PCM → WAV 変換成功: {wav_path}")
+intents = discord.Intents.default()
+client = discord.Client(intents=intents)
 
-def transcribe_new_files():
-    for filename in os.listdir(AUDIO_DIR):
-        if filename.endswith(".pcm"):
-            pcm_path = os.path.join(AUDIO_DIR, filename)
-            base_name = os.path.splitext(filename)[0]
-            wav_path = os.path.join(AUDIO_DIR, base_name + ".wav")
-            txt_path = os.path.join(OUTPUT_DIR, base_name + ".txt")
+async def send_text(text):
+    await client.wait_until_ready()
+    channel = client.get_channel(CHANNEL_ID)
+    if channel:
+        await channel.send(text)
+    else:
+        print("指定チャンネルが見つかりません。CHANNEL_IDを確認してください。")
 
-            # すでに変換済みならスキップ
-            if os.path.exists(txt_path):
+def pcm_to_wav(pcm_path, wav_path):
+    os.system(f'ffmpeg -f s16le -ar 48000 -ac 2 -i "{pcm_path}" "{wav_path}" -y -loglevel quiet')
+
+async def main_loop():
+    processed = set()
+    print("PCMフォルダ監視開始...")
+
+    while True:
+        for f in os.listdir(AUDIO_DIR):
+            if not f.endswith(".pcm") or f in processed:
                 continue
 
-            try:
-                convert_pcm_to_wav(pcm_path, wav_path)
-                result = model.transcribe(wav_path)
-                with open(txt_path, "w", encoding="utf-8") as f:
-                    f.write(result["text"])
-                print(f"📝 文字起こし完了: {txt_path}")
-            except Exception as e:
-                print(f"❌ エラー: {filename} - {e}")
+            pcm_path = os.path.join(AUDIO_DIR, f)
+            wav_path = pcm_path.replace(".pcm", ".wav")
 
-# 無限ループで監視（1ファイルごとに処理）
+            pcm_to_wav(pcm_path, wav_path)
+
+            print(f"文字起こし中: {f}")
+            result = model.transcribe(wav_path, language="ja")
+            print(f"認識結果: {result['text']}")
+
+            await send_text(result['text'])
+            processed.add(f)
+
+        await asyncio.sleep(3)
+
+@client.event
+async def on_ready():
+    print(f"Discordログイン完了: {client.user}")
+    await main_loop()
+
 if __name__ == "__main__":
-    print("🔁 PCMフォルダ監視開始...")
-    while True:
-        transcribe_new_files()
-        time.sleep(5)  # 5秒ごとにチェック
+    if not DISCORD_TOKEN or CHANNEL_ID == 0:
+        print("ERROR: .envにDISCORD_TOKENとCHANNEL_IDを正しく設定してください。")
+    else:
+        client.run(DISCORD_TOKEN)
