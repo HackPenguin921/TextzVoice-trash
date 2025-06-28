@@ -3,5 +3,5 @@ cd python-whisper
 python transcriber.py
 
 //実行コマンド(js)
-$ cd node-bot
+cd node-bot
 node index.js
