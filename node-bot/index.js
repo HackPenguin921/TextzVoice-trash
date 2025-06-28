@@ -1,8 +1,12 @@
+// node-bot/index.js
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const {
-  joinVoiceChannel, getVoiceConnection,
-  createAudioPlayer, createAudioResource, AudioPlayerStatus,
+  joinVoiceChannel,
+  getVoiceConnection,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
 } = require('@discordjs/voice');
 const prism = require('prism-media');
 const fs = require('fs');
@@ -26,63 +30,41 @@ client.once('ready', () => {
 });
 
 client.on('voiceStateUpdate', (oldState, newState) => {
-  if (newState.member.user.bot) return;
+  const user = newState.member?.user || oldState.member?.user;
+  if (!user || user.bot) return;
+
   const joinedChannel = newState.channel;
   const leftChannel = oldState.channel;
 
+  // ユーザーがVCに入ったとき
   if (joinedChannel && !leftChannel) {
-    const connection = joinVoiceChannel({
-      channelId: joinedChannel.id,
-      guildId: joinedChannel.guild.id,
-      adapterCreator: joinedChannel.guild.voiceAdapterCreator,
-    });
+    const connection = getVoiceConnection(joinedChannel.guild.id);
+    if (!connection) {
+      joinVoiceChannel({
+        channelId: joinedChannel.id,
+        guildId: joinedChannel.guild.id,
+        adapterCreator: joinedChannel.guild.voiceAdapterCreator,
+      });
+      console.log(`[接続] ${user.username} がVC「${joinedChannel.name}」に入室。Botも参加！`);
 
-    // VC参加通知（任意）
-    const textChannel = joinedChannel.guild.channels.cache.find(
-      c => c.isTextBased() && c.id === process.env.CHANNEL_ID
-    );
-    if (textChannel) {
-      textChannel.send(`🎧 VC「${joinedChannel.name}」に入りました`);
+      // テキスト通知
+      const textChannel = joinedChannel.guild.channels.cache.find(
+        c => c.isTextBased() && c.id === process.env.CHANNEL_ID
+      );
+      if (textChannel) {
+        textChannel.send(`🔊 Botが VC「${joinedChannel.name}」 に入りました`);
+      }
     }
-
-    const receiver = connection.receiver;
-
-    receiver.speaking.on('start', userId => {
-      if (audioStreams.has(userId)) return;
-
-      const user = joinedChannel.guild.members.cache.get(userId);
-      if (!user || user.user.bot) return;
-
-      const opusStream = receiver.subscribe(userId, { end: { behavior: 'manual' }});
-      const decoder = new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
-      const filename = `audio/${user.user.username}-${Date.now()}.pcm`;
-      const writeStream = fs.createWriteStream(filename);
-
-      opusStream.pipe(decoder).pipe(writeStream);
-
-      audioStreams.set(userId, { opusStream, decoder, writeStream });
-      console.log(`録音開始: ${filename}`);
-    });
-
-    receiver.speaking.on('end', userId => {
-      const streams = audioStreams.get(userId);
-      if (!streams) return;
-
-      streams.writeStream.end();
-      streams.opusStream.destroy();
-      streams.decoder.destroy();
-      audioStreams.delete(userId);
-      console.log(`録音終了: ${userId}`);
-    });
   }
 
+  // VCが無人になったとき
   if (leftChannel) {
-    const humanCount = leftChannel.members.filter(m => !m.user.bot).size;
-    if (humanCount === 0) {
-      const conn = getVoiceConnection(leftChannel.guild.id);
-      if (conn) {
-        conn.destroy();
-        console.log(`VC退出: ${leftChannel.name}`);
+    const isBotLeftAlone = leftChannel.members.filter(m => !m.user.bot).size === 0;
+    if (isBotLeftAlone) {
+      const connection = getVoiceConnection(leftChannel.guild.id);
+      if (connection) {
+        connection.destroy();
+        console.log(`[退出] VC「${leftChannel.name}」が無人。Botも退出しました。`);
       }
     }
   }
@@ -111,7 +93,7 @@ client.on('messageCreate', async message => {
     joinVoiceChannel({
       channelId: voiceChannel.id,
       guildId: message.guild.id,
-      adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      adapterCreator: message.guild.voiceAdapterCreator,
     });
 
   const resource = createAudioResource(path.resolve(filename));
