@@ -1,4 +1,3 @@
-# python-whisper/transcriber.py
 import os
 import time
 import whisper
@@ -20,13 +19,14 @@ async def send_text(text):
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
     if channel:
-        # Botの発言によって再度TTSされるのを防ぐため、client.user.idと比較
         await channel.send(f"📝 {text}")
     else:
         print("指定チャンネルが見つかりません。CHANNEL_IDを確認してください。")
 
 def pcm_to_wav(pcm_path, wav_path):
-    os.system(f'ffmpeg -f s16le -ar 48000 -ac 2 -i "{pcm_path}" "{wav_path}" -y -loglevel quiet')
+    # ffmpegログはエラーのみ表示
+    cmd = f'ffmpeg -f s16le -ar 48000 -ac 2 -i "{pcm_path}" "{wav_path}" -y -loglevel error'
+    os.system(cmd)
 
 async def main_loop():
     processed = set()
