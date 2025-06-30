@@ -1,4 +1,3 @@
-// node-bot/index.js
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const {
@@ -22,11 +21,37 @@ const client = new Client({
   ]
 });
 
-const audioStreams = new Map();
 const player = createAudioPlayer();
+
+// VCのユーザー音声録音用ストリーム作成関数
+function createListeningStream(userId, connection) {
+  const receiver = connection.receiver;
+  const opusStream = receiver.subscribe(userId, { end: { behavior: 'silence', duration: 1000 } });
+
+  const filename = `audio/${userId}-${Date.now()}.pcm`;
+  const outputStream = fs.createWriteStream(filename);
+
+  const decoder = new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
+  opusStream.pipe(decoder).pipe(outputStream);
+
+  outputStream.on('finish', () => {
+    console.log(`✅ 音声録音完了: ${filename}`);
+  });
+}
 
 client.once('ready', () => {
   console.log(`Bot logged in as ${client.user.tag}`);
+
+  // Bot起動時に既にVCにいるユーザーの録音開始（任意）
+  client.guilds.cache.forEach(guild => {
+    const connection = getVoiceConnection(guild.id);
+    if (!connection) return;
+    guild.voiceStates.cache.forEach(state => {
+      if (state.channel && !state.member.user.bot) {
+        createListeningStream(state.member.id, connection);
+      }
+    });
+  });
 });
 
 client.on('voiceStateUpdate', (oldState, newState) => {
@@ -38,16 +63,15 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 
   // ユーザーがVCに入ったとき
   if (joinedChannel && !leftChannel) {
-    const connection = getVoiceConnection(joinedChannel.guild.id);
+    let connection = getVoiceConnection(joinedChannel.guild.id);
     if (!connection) {
-      joinVoiceChannel({
+      connection = joinVoiceChannel({
         channelId: joinedChannel.id,
         guildId: joinedChannel.guild.id,
         adapterCreator: joinedChannel.guild.voiceAdapterCreator,
       });
       console.log(`[接続] ${user.username} がVC「${joinedChannel.name}」に入室。Botも参加！`);
 
-      // テキスト通知
       const textChannel = joinedChannel.guild.channels.cache.find(
         c => c.isTextBased() && c.id === process.env.CHANNEL_ID
       );
@@ -55,9 +79,16 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         textChannel.send(`🔊 Botが VC「${joinedChannel.name}」 に入りました`);
       }
     }
+
+    // VC内の全ユーザーを録音開始
+    joinedChannel.members.forEach(member => {
+      if (!member.user.bot) {
+        createListeningStream(member.id, connection);
+      }
+    });
   }
 
-  // VCが無人になったとき
+  // VCが無人になったらBotも退出
   if (leftChannel) {
     const isBotLeftAlone = leftChannel.members.filter(m => !m.user.bot).size === 0;
     if (isBotLeftAlone) {
@@ -70,6 +101,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   }
 });
 
+// メッセージ受信時にTTS再生
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
@@ -82,19 +114,20 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // TTSで読み上げ
   const filename = `audio/tts-${Date.now()}.mp3`;
   const tts = new gTTS(text, 'ja');
   await new Promise((resolve, reject) =>
     tts.save(filename, err => err ? reject(err) : resolve())
   );
 
-  const connection = getVoiceConnection(message.guild.id) ||
-    joinVoiceChannel({
+  let connection = getVoiceConnection(message.guild.id);
+  if (!connection) {
+    connection = joinVoiceChannel({
       channelId: voiceChannel.id,
       guildId: message.guild.id,
       adapterCreator: message.guild.voiceAdapterCreator,
     });
+  }
 
   const resource = createAudioResource(path.resolve(filename));
   player.play(resource);
