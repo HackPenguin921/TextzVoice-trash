@@ -27,7 +27,7 @@ const player = createAudioPlayer();
 function createListeningStream(userId, connection) {
   const receiver = connection.receiver;
   // 無音検知3秒に変更（デフォルトは1秒）
-  const opusStream = receiver.subscribe(userId, { end: { behavior: 'silence', duration: 3000 } });
+  const opusStream = receiver.subscribe(userId, { end: { behavior: 'silence', duration: 5000 } });
 
   const filename = `audio/${userId}-${Date.now()}.pcm`;
   const outputStream = fs.createWriteStream(filename);
