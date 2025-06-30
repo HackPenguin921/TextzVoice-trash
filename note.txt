@@ -1,7 +1,8 @@
 //実行コマンド(パイソン)
-cd python-whisper
+cd /workspaces/TextzVoice-trash/python-whisper
 python transcriber.py
 
+
 //実行コマンド(js)
-cd node-bot
+cd /workspaces/TextzVoice-trash/node-bot
 node index.js
