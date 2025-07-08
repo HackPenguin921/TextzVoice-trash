@@ -34,6 +34,21 @@ def move_to_processed(file_path):
     dest_path = os.path.join(PROCESSED_DIR, base_name)
     os.rename(file_path, dest_path)
 
+    
+def clean_audio_dir():
+    print("🧹 古い録音ファイルを削除中...")
+    for f in os.listdir(AUDIO_DIR):
+        if f.endswith(".pcm") or f.endswith(".wav"):
+            try:
+                os.remove(os.path.join(AUDIO_DIR, f))
+            except Exception as e:
+                print(f"⚠️ ファイル削除失敗: {f} ({e})")
+
+                
+# 起動時に呼び出し
+clean_audio_dir()
+
+
 async def main_loop():
     print("🎧 PCMフォルダ監視開始...")
 
