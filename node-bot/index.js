@@ -10,7 +10,6 @@ const {
 const prism = require('prism-media');
 const fs = require('fs');
 const path = require('path');
-const gTTS = require('gtts');
 
 const client = new Client({
   intents: [
@@ -22,25 +21,27 @@ const client = new Client({
 });
 
 const player = createAudioPlayer();
+const recordingUsers = new Map();
 
-// VCのユーザー音声録音用ストリーム作成関数
 function createListeningStream(userId, connection) {
+  if (recordingUsers.get(userId)) return;
+  recordingUsers.set(userId, true);
+
   const receiver = connection.receiver;
-  // 無音検知3秒に変更（デフォルトは1秒）
   const opusStream = receiver.subscribe(userId, { end: { behavior: 'silence', duration: 5000 } });
 
   const filename = `audio/${userId}-${Date.now()}.pcm`;
   const outputStream = fs.createWriteStream(filename);
-
   const decoder = new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
 
-  // エラーハンドリング追加
   opusStream.on('error', e => console.error('OpusStream error:', e));
   decoder.on('error', e => console.error('Decoder error:', e));
   outputStream.on('error', e => console.error('OutputStream error:', e));
 
   outputStream.on('finish', () => {
-    console.log(`✅ 音声録音完了: ${filename}`);
+    console.log(`✅ 録音完了: ${filename}`);
+    recordingUsers.set(userId, false);
+    createListeningStream(userId, connection);  // 🔁 録音ループ再開
   });
 
   opusStream.pipe(decoder).pipe(outputStream);
@@ -48,8 +49,6 @@ function createListeningStream(userId, connection) {
 
 client.once('ready', () => {
   console.log(`Bot logged in as ${client.user.tag}`);
-
-  // Bot起動時に既にVCにいるユーザーの録音開始（任意）
   client.guilds.cache.forEach(guild => {
     const connection = getVoiceConnection(guild.id);
     if (!connection) return;
@@ -77,13 +76,6 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         adapterCreator: joinedChannel.guild.voiceAdapterCreator,
       });
       console.log(`[接続] ${user.username} がVC「${joinedChannel.name}」に入室。Botも参加！`);
-
-      const textChannel = joinedChannel.guild.channels.cache.find(
-        c => c.isTextBased() && c.id === process.env.CHANNEL_ID
-      );
-      if (textChannel) {
-        textChannel.send(`🔊 Botが VC「${joinedChannel.name}」 に入りました`);
-      }
     }
 
     joinedChannel.members.forEach(member => {
@@ -104,7 +96,5 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     }
   }
 });
-
-// TTS再生などは省略（必要なら元コードからコピペしてください）
 
 client.login(process.env.DISCORD_TOKEN);

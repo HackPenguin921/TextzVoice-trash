@@ -9,6 +9,8 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
 AUDIO_DIR = "../node-bot/audio"
+PROCESSED_DIR = os.path.join(AUDIO_DIR, "processed")
+os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 model = whisper.load_model("base")
 
@@ -24,17 +26,20 @@ async def send_text(text):
         print("指定チャンネルが見つかりません。CHANNEL_IDを確認してください。")
 
 def pcm_to_wav(pcm_path, wav_path):
-    # ffmpegログはエラーのみ表示
     cmd = f'ffmpeg -f s16le -ar 48000 -ac 2 -i "{pcm_path}" "{wav_path}" -y -loglevel error'
     os.system(cmd)
 
+def move_to_processed(file_path):
+    base_name = os.path.basename(file_path)
+    dest_path = os.path.join(PROCESSED_DIR, base_name)
+    os.rename(file_path, dest_path)
+
 async def main_loop():
-    processed = set()
     print("🎧 PCMフォルダ監視開始...")
 
     while True:
         for f in os.listdir(AUDIO_DIR):
-            if not f.endswith(".pcm") or f in processed:
+            if not f.endswith(".pcm"):
                 continue
 
             pcm_path = os.path.join(AUDIO_DIR, f)
@@ -47,7 +52,9 @@ async def main_loop():
             print(f"認識結果: {result['text']}")
 
             await send_text(result['text'])
-            processed.add(f)
+
+            move_to_processed(pcm_path)
+            move_to_processed(wav_path)
 
         await asyncio.sleep(3)
 
