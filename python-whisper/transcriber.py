@@ -12,7 +12,7 @@ AUDIO_DIR = "../node-bot/audio"
 PROCESSED_DIR = os.path.join(AUDIO_DIR, "processed")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-model = whisper.load_model("medium")
+model = whisper.load_model("base")
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
