@@ -1,15 +1,10 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits } = require('discord.js');
-const {
-  joinVoiceChannel,
-  getVoiceConnection,
-  createAudioPlayer,
-  createAudioResource,
-  AudioPlayerStatus,
-} = require('@discordjs/voice');
-const prism = require('prism-media');
 const fs = require('fs');
 const path = require('path');
+const { Client, GatewayIntentBits } = require('discord.js');
+const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource } = require('@discordjs/voice');
+const prism = require('prism-media');
+const gTTS = require('gtts');
 
 const client = new Client({
   intents: [
@@ -34,67 +29,72 @@ function createListeningStream(userId, connection) {
   const outputStream = fs.createWriteStream(filename);
   const decoder = new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
 
-  opusStream.on('error', e => console.error('OpusStream error:', e));
-  decoder.on('error', e => console.error('Decoder error:', e));
-  outputStream.on('error', e => console.error('OutputStream error:', e));
+  opusStream.pipe(decoder).pipe(outputStream);
 
   outputStream.on('finish', () => {
     console.log(`✅ 録音完了: ${filename}`);
     recordingUsers.set(userId, false);
-    createListeningStream(userId, connection);  // 🔁 録音ループ再開
+    createListeningStream(userId, connection); // ループ再開
   });
-
-  opusStream.pipe(decoder).pipe(outputStream);
 }
 
 client.once('ready', () => {
-  console.log(`Bot logged in as ${client.user.tag}`);
-  client.guilds.cache.forEach(guild => {
-    const connection = getVoiceConnection(guild.id);
-    if (!connection) return;
-    guild.voiceStates.cache.forEach(state => {
-      if (state.channel && !state.member.user.bot) {
-        createListeningStream(state.member.id, connection);
-      }
-    });
-  });
+  console.log(`🤖 Botログイン: ${client.user.tag}`);
 });
 
 client.on('voiceStateUpdate', (oldState, newState) => {
   const user = newState.member?.user || oldState.member?.user;
   if (!user || user.bot) return;
 
-  const joinedChannel = newState.channel;
-  const leftChannel = oldState.channel;
+  const joined = newState.channel;
+  const left = oldState.channel;
 
-  if (joinedChannel && !leftChannel) {
-    let connection = getVoiceConnection(joinedChannel.guild.id);
+  if (joined && !left) {
+    let connection = getVoiceConnection(joined.guild.id);
     if (!connection) {
       connection = joinVoiceChannel({
-        channelId: joinedChannel.id,
-        guildId: joinedChannel.guild.id,
-        adapterCreator: joinedChannel.guild.voiceAdapterCreator,
+        channelId: joined.id,
+        guildId: joined.guild.id,
+        adapterCreator: joined.guild.voiceAdapterCreator,
       });
-      console.log(`[接続] ${user.username} がVC「${joinedChannel.name}」に入室。Botも参加！`);
+      console.log(`🎤 VC参加: ${user.username} in ${joined.name}`);
     }
 
-    joinedChannel.members.forEach(member => {
+    joined.members.forEach(member => {
       if (!member.user.bot) {
         createListeningStream(member.id, connection);
       }
     });
   }
 
-  if (leftChannel) {
-    const isBotLeftAlone = leftChannel.members.filter(m => !m.user.bot).size === 0;
-    if (isBotLeftAlone) {
-      const connection = getVoiceConnection(leftChannel.guild.id);
+  if (left) {
+    const noHumans = left.members.filter(m => !m.user.bot).size === 0;
+    if (noHumans) {
+      const connection = getVoiceConnection(left.guild.id);
       if (connection) {
         connection.destroy();
-        console.log(`[退出] VC「${leftChannel.name}」が無人。Botも退出しました。`);
+        console.log(`👋 VC退出: ${left.name} 無人`);
       }
     }
   }
+});
+
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || !message.guild) return;
+  if (!message.content.startsWith('!say ')) return;
+
+  const connection = getVoiceConnection(message.guild.id);
+  if (!connection) return;
+
+  const text = message.content.slice(5).trim();
+  const gtts = new gTTS(text, 'ja');
+  const filepath = `audio/tts-${Date.now()}.mp3`;
+
+  gtts.save(filepath, () => {
+    const resource = createAudioResource(filepath);
+    player.play(resource);
+    connection.subscribe(player);
+  });
 });
 
 client.login(process.env.DISCORD_TOKEN);

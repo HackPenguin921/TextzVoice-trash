@@ -12,7 +12,7 @@ AUDIO_DIR = "../node-bot/audio"
 PROCESSED_DIR = os.path.join(AUDIO_DIR, "processed")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-model = whisper.load_model("base")
+model = whisper.load_model("medium")
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -23,33 +23,29 @@ async def send_text(text):
     if channel:
         await channel.send(f"📝 {text}")
     else:
-        print("指定チャンネルが見つかりません。CHANNEL_IDを確認してください。")
+        print("❌ チャンネルが見つかりません")
 
-def pcm_to_wav(pcm_path, wav_path):
-    cmd = f'ffmpeg -f s16le -ar 48000 -ac 2 -i "{pcm_path}" "{wav_path}" -y -loglevel error'
-    os.system(cmd)
+def pcm_to_wav_clean(pcm_path, wav_path):
+    tmp_wav = wav_path.replace(".wav", "-raw.wav")
+    os.system(f'ffmpeg -f s16le -ar 48000 -ac 2 -i "{pcm_path}" "{tmp_wav}" -y -loglevel error')
+    os.system(f'ffmpeg -i "{tmp_wav}" -af silenceremove=stop_periods=-1:stop_duration=0.5:stop_threshold=-40dB "{wav_path}" -y -loglevel error')
+    os.remove(tmp_wav)
 
 def move_to_processed(file_path):
-    base_name = os.path.basename(file_path)
-    dest_path = os.path.join(PROCESSED_DIR, base_name)
-    os.rename(file_path, dest_path)
+    base = os.path.basename(file_path)
+    os.rename(file_path, os.path.join(PROCESSED_DIR, base))
 
-    
 def clean_audio_dir():
-    print("🧹 古い録音ファイルを削除中...")
+    print("🧹 起動時に古い録音ファイル削除...")
     for f in os.listdir(AUDIO_DIR):
         if f.endswith(".pcm") or f.endswith(".wav"):
             try:
                 os.remove(os.path.join(AUDIO_DIR, f))
             except Exception as e:
-                print(f"⚠️ ファイル削除失敗: {f} ({e})")
-
-                
-# 起動時に呼び出し
-clean_audio_dir()
-
+                print(f"⚠️ 削除失敗: {f}: {e}")
 
 async def main_loop():
+    clean_audio_dir()
     print("🎧 PCMフォルダ監視開始...")
 
     while True:
@@ -60,7 +56,7 @@ async def main_loop():
             pcm_path = os.path.join(AUDIO_DIR, f)
             wav_path = pcm_path.replace(".pcm", ".wav")
 
-            pcm_to_wav(pcm_path, wav_path)
+            pcm_to_wav_clean(pcm_path, wav_path)
 
             print(f"文字起こし中: {f}")
             result = model.transcribe(wav_path, language="ja")
@@ -80,6 +76,6 @@ async def on_ready():
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN or CHANNEL_ID == 0:
-        print("❌ .envにDISCORD_TOKENとCHANNEL_IDを正しく設定してください。")
+        print("❌ .envを確認してください")
     else:
         client.run(DISCORD_TOKEN)
